@@ -14,7 +14,6 @@ NICKNAME = 'ChatReaderTest' #Bot's nickname here
 TOKEN = 'PLACE TOKEN HERE' #format 'oauth:YOURTOKENHERE'
 CHANNEL = 'PLACE CHANNEL NAME HERE WITH # AT FRONT'  #format '#Channelname'
 
-globalMessageID = 0
 
 async def chatLoop():
     pass
@@ -55,16 +54,37 @@ async def readMessage(text, messageID, speakerID):
             p.terminate()
 
         os.remove(fileName)
+        
 def parse(msg):
-    isMessageRegex = r"^:[a-zA-Z0-9_]+\![a-zA-Z0-9_]+@[a-zA-Z0-9_]+\.tmi\.twitch\.tv PRIVMSG #[a-zA-Z0-9_]+ :.+$"
-    messageRegex = r"PRIVMSG " + CHANNEL + r" :(.+)"
+    isMessageRegex = r"^(@\S+)? :[a-zA-Z0-9_]+\![a-zA-Z0-9_]+@[a-zA-Z0-9_]+\.tmi\.twitch\.tv PRIVMSG #[a-zA-Z0-9_]+ :.+$"
+    privmessageRegex = r"PRIVMSG " + CHANNEL + r" :(.+)"
     if re.match(isMessageRegex, msg):
-        global globalMessageID
-        globalMessageID += 1
+
+        splitMsg = msg.split(' ', 1) #split message into tags[0] and the message[1]
+        displayName = splitMsg[0].split('display-name=',1)[1].split(';',1)[0]
+        ID = splitMsg[0].split('id=',1)[1].split(';',1)[0]
+        emoteTag = splitMsg[0].split('emotes=',1)[1].split(';',1)[0]
+        emoteLists = re.findall(r'([0-9]+-[0-9]+)', emoteTag)
+        emoteLists = [pair.split('-') for pair in emoteLists]
+        emoteLists.sort(key=lambda x: int(x[0]))
+        rawMsg = re.findall(privmessageRegex, splitMsg[1])[0]
+
+        formatedMsg = ''
+        prevInx = 0;
+        for pair in emoteLists:
+            formatedMsg = formatedMsg + rawMsg[prevInx:int(pair[0])]
+            prevInx = int(pair[1])+1
+        formatedMsg = formatedMsg + rawMsg[prevInx:]
+        #TODO remove action 'ACTION '
+        
         return{
-                'username': re.findall(r'^:([a-zA-Z0-9_]+)!', msg)[0],
-                'message': re.findall(messageRegex, msg)[0],
-                'ID': str(globalMessageID)
+                'username': re.findall(r'^:([a-zA-Z0-9_]+)!', splitMsg[1])[0],
+                'displayname' : displayName,
+                'rawMessage': rawMsg,
+                'message' : formatedMsg,
+                'ID': ID,
+                'tags' : splitMsg[0],
+                'emotePosList' : emoteLists
             }
     else:
         return None
@@ -79,17 +99,20 @@ if __name__ == "__main__":
     sock = socket.socket()
     try:
         sock.connect((SERVER, PORT))
+        sock.send("CAP REQ :twitch.tv/tags\n".encode('utf-8'))
         sock.send(f"PASS {TOKEN}\n".encode('utf-8'))
         sock.send(f"NICK {NICKNAME}\n".encode('utf-8'))
         sock.send(f"JOIN {CHANNEL}\n".encode('utf-8'))
         response = sock.recv(2048).decode('utf-8')
     except socket.error as e:
         print(e)
-        if re.match(r'\[WinError 10054\]'):
-            print("Previous Crash forcibly closed connection. Please start this script again.")
+        if re.match(r'\[WinError 10054\]',str(e)):
+            print("Previous Crash or interupt forcibly closed connection. Please start this script again.")
             os._exit(10054)
+            
     print(response)
-    
+
+    #TODO add exit functionality
     loop = True
     while loop:
         try:
@@ -97,18 +120,39 @@ if __name__ == "__main__":
         except socket.error as e:
             print(e)
         
-        if re.match(r'^PING :tmi\.twitch\.tv$', response):
+        if re.match(r'PING :tmi.twitch.tv', response):
             sock.send("PONG :tmi.twitch.tv\r\n".encode('utf-8'))
             time.sleep(1)
     
         elif len(response) > 0:
             #TODO add emoji support
-            #print(response)
+            print('------------------------')
+            print(response)
             messages = [parse(msg) for msg in filter(None, response.split('\r\n'))]
             messages = filter(None, messages)
+            speech = ""
+
+            try:
+                msg = next(messages)
+            except StopIteration: #if filter is empty do nothing
+                pass
+            else: # else process first msg and note its ID
+                ID = msg['ID']
+                print(msg['displayname'] + ": " + msg['message'])
+                print(len(msg['message'].replace(" ", "")))
+                if len(msg['message'].replace(" ", "")) > 0:
+                      speech = speech +  msg['message'] + '。'
+                            
             for msg in messages:
-                    print(msg)
-                    asyncio.run(readMessage(msg['message'], msg['ID'], 2))
+                    print(msg['displayname'] + ": " + msg['message'])
+                    print(len(msg['message'].replace(" ", "")))
+                    if len(msg['message'].replace(" ", "")) > 0:
+                          speech = speech + msg['message'] + '。'
+                          
+            if len(speech) > 0:
+                print("sent: " + speech)
+                asyncio.run(readMessage(speech,  ID, 2))
             
 
     sock.close()
+    
