@@ -23,11 +23,18 @@ else:
 
 BOUYOMI_VOLUME = 50
 LIST_VOICEVOX_SPEAKERS_ON_START = False #Print a list of all availiable VoiceVox voices and their IDs
-DEFAULT_VOICE = 9 #Default voice ID used for Bouyoumi or VoiceVox
+DEFAULT_VOICE = 35 #Default voice ID used for Bouyoumi or VoiceVox
 DEBUG_INFO = False #Will desplay raw message data
 PRINT_MESSAGES = True #Will print chat messages
 REMOVE_EMOTE = True
-IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usually bot messages, When false, just removes SOH and ACTION. 
+IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usually bot messages...
+#^When false, just removes SOH and ACTION. 
+
+MESSAGE_SEPARATOR = "."#placed at the end of messages to be read...
+#^(helps separate messages as muliple messages may be sent to the speech synth at once)
+REPLACE_SPACES = '。' #Replaces spaces with a char or string, useful for japanse voice syths
+#^ recomened options (do not replace space)space:' ', Kuten:'。', (removeAllSpaces)nothing:''
+
 
 
 async def chatLoop():
@@ -100,7 +107,11 @@ def parse(msg):
         if re.match('^\001ACTION', formatedMsg):
             if IGNORE_ACTION_MESSAGES:
                 return None
-            formatedMsg = formatedMsg[7:-1] 
+            formatedMsg = formatedMsg[7:-1]
+            
+        formatedMsg = formatedMsg.strip()
+        if REPLACE_SPACES != ' ':
+            formatedMsg = formatedMsg.replace(' ',REPLACE_SPACES)
         
         return{
                 'username': re.findall(r'^:([a-zA-Z0-9_]+)!', splitMsg[1])[0],
@@ -116,7 +127,7 @@ def parse(msg):
     
 
 if __name__ == "__main__":
-    if LIST_VOICEVOX_SPEAKERS_ON_START:
+    if LIST_VOICEVOX_SPEAKERS_ON_START and not USE_BOUYOMICHAN:
         asyncio.run(speakerList())
         
     if not (re.match(r'^oauth:([a-zA-Z0-9_]+)', TOKEN) and re.match(r'^#([a-zA-Z0-9_]+)', CHANNEL)):
@@ -167,10 +178,11 @@ if __name__ == "__main__":
             print('Socket error in loop:')
             print(e)
             if re.match(r'\[WinError 10053\]', str(e)):
-                print("Please wait a few seconds and then start this script again.")
+                print(" Please start this script again.")
                 os._exit(10053)
         
         if re.match(r'PING :tmi.twitch.tv', response):
+            print('Ping')
             sock.send("PONG :tmi.twitch.tv\r\n".encode('utf-8'))
             time.sleep(1)
     
@@ -203,9 +215,9 @@ if __name__ == "__main__":
                 if PRINT_MESSAGES: 
                     print(name + ": " + msg['message'])
                     if DEBUG_INFO:
-                        print("Length: " + len(msg['message'].replace(" ", "")))
+                        print("Formated Length: " + str(len(msg['message'])))
                 voice = voiceDict.get(msg['username'], DEFAULT_VOICE)
-                speech.append([msg['message'].replace(" ", "") + '。', msg['ID'],voice])
+                speech.append([msg['message'] + MESSAGE_SEPARATOR, msg['ID'],voice])
                             
             for msg in messages:
                 name = msg['displayname']
@@ -214,13 +226,13 @@ if __name__ == "__main__":
                 if PRINT_MESSAGES: 
                     print(name + ": " + msg['message'])
                     if DEBUG_INFO:
-                        print("Length: " + len(msg['message'].replace(" ", "")))
+                        print("Formated Length: " + str(len(msg['message'])))
                 voice = voiceDict.get(msg['username'], DEFAULT_VOICE)
-                if len(msg['message'].replace(" ", "")) > 0:
+                if len(msg['message']) > 0:
                     if voice != speech[-1][2]:
-                        speech.append([msg['message'] + '。', msg['ID'], voice])
+                        speech.append([msg['message'] + MESSAGE_SEPARATOR, msg['ID'], voice])
                     else:
-                        speech[-1][0] = speech[-1][0] +  msg['message'] + '。'
+                        speech[-1][0] = speech[-1][0] +  msg['message'] + MESSAGE_SEPARATOR
 
             for linePair in speech:
                 if len(linePair[0]) > 0:
