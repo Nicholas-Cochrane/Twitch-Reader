@@ -12,7 +12,12 @@ SERVER = 'irc.chat.twitch.tv'
 PORT = 6667
 NICKNAME = 'ChatReaderTest' #Bot's nickname here
 TOKEN = 'PLACE TOKEN HERE' #format 'oauth:YOURTOKENHERE'
-CHANNEL = 'PLACE CHANNEL NAME HERE WITH # AT FRONT'  #format '#Channelname'
+CHANNEL = 'PLACE CHANNEL NAME HERE WITH # IN FRONT'  #format '#Channelname'
+
+DEFAULT_VOICE = 1
+
+REMOVE_EMOTE = True
+IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usually bot messages
 
 
 async def chatLoop():
@@ -61,21 +66,28 @@ def parse(msg):
     if re.match(isMessageRegex, msg):
 
         splitMsg = msg.split(' ', 1) #split message into tags[0] and the message[1]
+        rawMsg = re.findall(privmessageRegex, splitMsg[1])[0]
+        
         displayName = splitMsg[0].split('display-name=',1)[1].split(';',1)[0]
         ID = splitMsg[0].split('id=',1)[1].split(';',1)[0]
         emoteTag = splitMsg[0].split('emotes=',1)[1].split(';',1)[0]
         emoteLists = re.findall(r'([0-9]+-[0-9]+)', emoteTag)
         emoteLists = [pair.split('-') for pair in emoteLists]
         emoteLists.sort(key=lambda x: int(x[0]))
-        rawMsg = re.findall(privmessageRegex, splitMsg[1])[0]
+        if REMOVE_EMOTE:
+            formatedMsg = ''
+            prevInx = 0;
+            for pair in emoteLists:
+                formatedMsg = formatedMsg + rawMsg[prevInx:int(pair[0])]
+                prevInx = int(pair[1])+1
+            formatedMsg = formatedMsg + rawMsg[prevInx:]
+        else:
+            formatedMsg = rawMsg
 
-        formatedMsg = ''
-        prevInx = 0;
-        for pair in emoteLists:
-            formatedMsg = formatedMsg + rawMsg[prevInx:int(pair[0])]
-            prevInx = int(pair[1])+1
-        formatedMsg = formatedMsg + rawMsg[prevInx:]
-        #TODO remove action 'ACTION '
+        if re.match('^\001ACTION', formatedMsg):
+            if IGNORE_ACTION_MESSAGES:
+                return None
+            formatedMsg = formatedMsg[7:-1] 
         
         return{
                 'username': re.findall(r'^:([a-zA-Z0-9_]+)!', splitMsg[1])[0],
@@ -95,8 +107,16 @@ if __name__ == "__main__":
     if not (re.match(r'^oauth:([a-zA-Z0-9_]+)', TOKEN) and re.match(r'^#([a-zA-Z0-9_]+)', CHANNEL)):
         print("You did not properly set up the Token or Channel:")
         raise  Exception("Token or Channel name not formatted correctly. Token must be in 'oauth:*' format and channel musst be in '#CHANNELNAME' format.")
-    
+    try:
+        with open('voiceDict.txt', 'r') as fp:
+            voiceDict = json.load(fp)
+    except FileNotFoundError:
+        print("No Voice Dictionary Found, all voices will be default")
+        voiceDict = {}
+
+        
     sock = socket.socket()
+    
     try:
         sock.connect((SERVER, PORT))
         sock.send("CAP REQ :twitch.tv/tags\n".encode('utf-8'))
@@ -105,6 +125,7 @@ if __name__ == "__main__":
         sock.send(f"JOIN {CHANNEL}\n".encode('utf-8'))
         response = sock.recv(2048).decode('utf-8')
     except socket.error as e:
+        print('Socket error before loop:')
         print(e)
         if re.match(r'\[WinError 10054\]',str(e)):
             print("Previous Crash or interupt forcibly closed connection. Please start this script again.")
@@ -112,47 +133,77 @@ if __name__ == "__main__":
             
     print(response)
 
-    #TODO add exit functionality
     loop = True
+    trailingMessage=''
     while loop:
         try:
-            response = sock.recv(2048).decode("utf-8")
+            rawResponse = sock.recv(4096)
+            response = rawResponse.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                rawResponse = rawResponse + sock.recv(4096)
+                response = rawResponse.decode("utf-8")
+            except UnicodeDecodeError:
+                response = ''
+            except socket.error as e:
+                print('Socket error in loop in unicode Decode Catch:')
+                print(e)
         except socket.error as e:
+            print('Socket error in loop:')
             print(e)
+            if re.match(r'\[WinError 10053\]', str(e)):
+                print(" Please start this script again.")
+                os._exit(10053)
         
         if re.match(r'PING :tmi.twitch.tv', response):
             sock.send("PONG :tmi.twitch.tv\r\n".encode('utf-8'))
             time.sleep(1)
     
         elif len(response) > 0:
-            #TODO add emoji support
             print('------------------------')
             print(response)
+            print('<><><><><><><><><><><><><>')
+            response = trailingMessage + response
+            trailingMessage = ''
+            if response[-2:] != "\r\n":#split in message (does not end in return new line
+                lastNewLine = response.rindex("\r\n")
+                trailingMessage = response[lastNewLine:]
+                response = response[:lastNewLine]
+                print('trailing line')
+                
             messages = [parse(msg) for msg in filter(None, response.split('\r\n'))]
             messages = filter(None, messages)
-            speech = ""
+            speech = []
 
             try:
                 msg = next(messages)
             except StopIteration: #if filter is empty do nothing
                 pass
             else: # else process first msg and note its ID
-                ID = msg['ID']
-                print(msg['displayname'] + ": " + msg['message'])
+                name = msg['displayname']
+                if msg['displayname'] != msg['username']:
+                    name = name + ' (' + msg['username'] + ')'
+                print(name + ": " + msg['message'])
                 print(len(msg['message'].replace(" ", "")))
-                if len(msg['message'].replace(" ", "")) > 0:
-                      speech = speech +  msg['message'] + '。'
+                voice = voiceDict.get(msg['username'], DEFAULT_VOICE)
+                speech.append([msg['message'].replace(" ", "") + '。', msg['ID'],voice])
                             
             for msg in messages:
-                    print(msg['displayname'] + ": " + msg['message'])
-                    print(len(msg['message'].replace(" ", "")))
-                    if len(msg['message'].replace(" ", "")) > 0:
-                          speech = speech + msg['message'] + '。'
-                          
-            if len(speech) > 0:
-                print("sent: " + speech)
-                asyncio.run(readMessage(speech,  ID, 2))
-            
+                name = msg['displayname']
+                if msg['displayname'] != msg['username']:
+                    name = name + ' (' + msg['username'] + ')'
+                print(name + ": " + msg['message'])
+                print(len(msg['message'].replace(" ", "")))
+                voice = voiceDict.get(msg['username'], DEFAULT_VOICE)
+                if len(msg['message'].replace(" ", "")) > 0:
+                    if voice != speech[-1][2]:
+                        speech.append([msg['message'] + '。', msg['ID'], voice])
+                    else:
+                        speech[-1][0] = speech[-1][0] +  msg['message'] + '。'
 
+            for linePair in speech:
+                if len(linePair[0]) > 0:
+                    print("sent: " + linePair[0])
+                    asyncio.run(readMessage(linePair[0],  linePair[1], linePair[2]))
+            
     sock.close()
-    
