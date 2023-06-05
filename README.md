@@ -17,6 +17,7 @@ pip install pyaudio
 
 ## Usage
 Set the bot's nickname, your twitch API token and channel name
+
 Note: Use channelname not display name
 ```py
 NICKNAME = 'ChatReader' #Bot's nickname here
@@ -40,6 +41,7 @@ USE_BOUYOMICHAN = True
 ```
 
 If you want some users to have custom voices create a file (voiceDict.txt) in the json format {"CHANNELNAME": VOICEID}
+
 Note: Use channelname not display name
 Ex:
 ```json

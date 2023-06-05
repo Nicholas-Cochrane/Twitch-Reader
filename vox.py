@@ -167,7 +167,7 @@ if __name__ == "__main__":
             print('Socket error in loop:')
             print(e)
             if re.match(r'\[WinError 10053\]', str(e)):
-                print(" Please start this script again.")
+                print("Please wait a few seconds and then start this script again.")
                 os._exit(10053)
         
         if re.match(r'PING :tmi.twitch.tv', response):
