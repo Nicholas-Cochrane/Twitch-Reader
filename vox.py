@@ -1,5 +1,4 @@
-from voicevox import Client
-import pyaudio
+
 import wave
 import asyncio
 import time
@@ -11,14 +10,24 @@ import socket
 CHUNK = 1024
 SERVER = 'irc.chat.twitch.tv'
 PORT = 6667
-NICKNAME = 'ChatReaderTest' #Bot's nickname here
+NICKNAME = 'ChatReader' #Bot's nickname here
 TOKEN = 'PLACE TOKEN HERE' #format 'oauth:YOURTOKENHERE'
 CHANNEL = 'PLACE CHANNEL NAME HERE WITH # IN FRONT'  #format '#Channelname'
 
-DEFAULT_VOICE = 1
+USE_BOUYOMICHAN = True
+if USE_BOUYOMICHAN:
+    import bouyomichan
+else:
+    from voicevox import Client
+    import pyaudio
 
+BOUYOMI_VOLUME = 50
+LIST_VOICEVOX_SPEAKERS_ON_START = False #Print a list of all availiable VoiceVox voices and their IDs
+DEFAULT_VOICE = 9 #Default voice ID used for Bouyoumi or VoiceVox
+DEBUG_INFO = False #Will desplay raw message data
+PRINT_MESSAGES = True #Will print chat messages
 REMOVE_EMOTE = True
-IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usually bot messages
+IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usually bot messages, When false, just removes SOH and ACTION. 
 
 
 async def chatLoop():
@@ -32,7 +41,7 @@ async def speakerList():
             for style in speaker.styles:
                 print("   " + style.name + " : " + str(style.id))
 
-async def readMessage(text, messageID, speakerID):
+async def readMessageVoiceVox(text, messageID, speakerID):
     fileName = messageID + ".wav"
     async with Client() as client:
         audio_query = await client.create_audio_query(
@@ -60,6 +69,9 @@ async def readMessage(text, messageID, speakerID):
             p.terminate()
 
         os.remove(fileName)
+
+async def readMessageBouyomi(text, speakerID):
+    bouyomichan.talk(text, voice=speakerID, volume=BOUYOMI_VOLUME)
         
 def parse(msg):
     isMessageRegex = r"^(@\S+)? :[a-zA-Z0-9_]+\![a-zA-Z0-9_]+@[a-zA-Z0-9_]+\.tmi\.twitch\.tv PRIVMSG #[a-zA-Z0-9_]+ :.+$"
@@ -104,7 +116,9 @@ def parse(msg):
     
 
 if __name__ == "__main__":
-    #asyncio.run(speakerList())
+    if LIST_VOICEVOX_SPEAKERS_ON_START:
+        asyncio.run(speakerList())
+        
     if not (re.match(r'^oauth:([a-zA-Z0-9_]+)', TOKEN) and re.match(r'^#([a-zA-Z0-9_]+)', CHANNEL)):
         print("You did not properly set up the Token or Channel:")
         raise  Exception("Token or Channel name not formatted correctly. Token must be in 'oauth:*' format and channel musst be in '#CHANNELNAME' format.")
@@ -161,16 +175,18 @@ if __name__ == "__main__":
             time.sleep(1)
     
         elif len(response) > 0:
-            print('------------------------')
-            print(response)
-            print('<><><><><><><><><><><><><>')
+            if DEBUG_INFO:
+                print('------------------------')
+                print(response)
+                print('<><><><><><><><><><><><><>')
             response = trailingMessage + response
             trailingMessage = ''
             if response[-2:] != "\r\n":#split in message (does not end in return new line
                 lastNewLine = response.rindex("\r\n")
                 trailingMessage = response[lastNewLine:]
                 response = response[:lastNewLine]
-                print('trailing line')
+                if DEBUG_INFO:
+                    print('trailing line')
                 
             messages = [parse(msg) for msg in filter(None, response.split('\r\n'))]
             messages = filter(None, messages)
@@ -184,8 +200,10 @@ if __name__ == "__main__":
                 name = msg['displayname']
                 if msg['displayname'] != msg['username']:
                     name = name + ' (' + msg['username'] + ')'
-                print(name + ": " + msg['message'])
-                print(len(msg['message'].replace(" ", "")))
+                if PRINT_MESSAGES: 
+                    print(name + ": " + msg['message'])
+                    if DEBUG_INFO:
+                        print("Length: " + len(msg['message'].replace(" ", "")))
                 voice = voiceDict.get(msg['username'], DEFAULT_VOICE)
                 speech.append([msg['message'].replace(" ", "") + '。', msg['ID'],voice])
                             
@@ -193,8 +211,10 @@ if __name__ == "__main__":
                 name = msg['displayname']
                 if msg['displayname'] != msg['username']:
                     name = name + ' (' + msg['username'] + ')'
-                print(name + ": " + msg['message'])
-                print(len(msg['message'].replace(" ", "")))
+                if PRINT_MESSAGES: 
+                    print(name + ": " + msg['message'])
+                    if DEBUG_INFO:
+                        print("Length: " + len(msg['message'].replace(" ", "")))
                 voice = voiceDict.get(msg['username'], DEFAULT_VOICE)
                 if len(msg['message'].replace(" ", "")) > 0:
                     if voice != speech[-1][2]:
@@ -204,7 +224,11 @@ if __name__ == "__main__":
 
             for linePair in speech:
                 if len(linePair[0]) > 0:
-                    print("sent: " + linePair[0])
-                    asyncio.run(readMessage(linePair[0],  linePair[1], linePair[2]))
+                    if DEBUG_INFO:
+                        print("sent: " + linePair[0])
+                    if USE_BOUYOMICHAN:
+                        asyncio.run(readMessageBouyomi(linePair[0], linePair[2]))
+                    else:
+                        asyncio.run(readMessageVoiceVox(linePair[0],  linePair[1], linePair[2]))
             
     sock.close()
