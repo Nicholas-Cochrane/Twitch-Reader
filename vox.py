@@ -32,7 +32,7 @@ IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usua
 
 MESSAGE_SEPARATOR = "."#placed at the end of messages to be read...
 #^(helps separate messages as muliple messages may be sent to the speech synth at once)
-REPLACE_SPACES = '。' #Replaces spaces with a char or string, useful for japanse voice syths
+REPLACE_SPACES = ' ' #Replaces spaces with a char or string, useful for japanse voice syths
 #^ recomened options (do not replace space)space:' ', Kuten:'。', (removeAllSpaces)nothing:''
 
 
