@@ -14,6 +14,7 @@ If using VoiceVox directly
 pip install voicevox-client
 pip install pyaudio
 ```
+pyaudio is also used for message sounds if wanted 
 
 ## Usage
 Set the bot's nickname, your twitch API token and channel name
@@ -32,6 +33,10 @@ DEFAULT_VOICE = 9 #Default voice ID used for Bouyoumi or VoiceVox
 DEBUG_INFO = False #Will desplay raw message data
 PRINT_MESSAGES = True #Will print chat messages
 REMOVE_EMOTE = True
+REMOVE_EMOJI = True
+DEFAULT_MESSAGE_SOUND = True #Play /sounds/default.wav if message is blank after formating (ex: emote only)
+SINGLE_EMOTE_SOUND = True #Play /sounds/<EMOTENAME>.wav if message consists of only one emote/string of one emote
+MESSAGE_SOUND_VOLUME = 0.5 # from 0 to 1
 IGNORE_ACTION_MESSAGES = False #Ignore messages that start with \001ACTION. Usually bot messages, When false, just removes SOH and ACTION. 
 ```
 
@@ -46,4 +51,11 @@ Note: Use channelname not display name
 Ex:
 ```json
 {"JonDoe001":16, "user_name123":2}
+```
+
+If you want sounds when a message is not read as all characters are formated out such as emotes or emoji only messages see
+```py
+DEFAULT_MESSAGE_SOUND = True #Play /sounds/default.wav if message is blank after formating (ex: emote only)
+SINGLE_EMOTE_SOUND = True #Play /sounds/<EMOTENAME>.wav if message consists of only one emote/string of one emote
+MESSAGE_SOUND_VOLUME = 0.5 # from 0 to 1
 ```
